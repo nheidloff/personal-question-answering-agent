@@ -395,7 +395,7 @@ def chat(req: ChatRequest) -> ChatResponse:
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ],
-        temperature=0.1,
+        temperature=0.0,
     )
 
     return ChatResponse(answer=answer, sources=sources)

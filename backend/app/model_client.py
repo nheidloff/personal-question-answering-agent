@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Any
+import json
 
 import requests
 
@@ -15,12 +16,18 @@ class ModelClient:
         if not texts:
             return []
 
+        payload = {
+            "model": self._settings.model_embed_model,
+            "input": texts,
+        }
+        if self._settings.debug:
+            print("\n--- Embed Payload ---")
+            print(json.dumps(payload, indent=2))
+            print("-" * 21 + "\n")
+
         response = requests.post(
             f"{self._settings.model_base_url}/embeddings",
-            json={
-                "model": self._settings.model_embed_model,
-                "input": texts,
-            },
+            json=payload,
             timeout=300,
         )
         response.raise_for_status()
@@ -33,6 +40,11 @@ class ModelClient:
             "messages": messages,
             "temperature": temperature,
         }
+        if self._settings.debug:
+            print("\n--- Chat Payload ---")
+            print(json.dumps(payload, indent=2))
+            print("-" * 20 + "\n")
+
         response = requests.post(
             f"{self._settings.model_base_url}/chat/completions",
             json=payload,

@@ -4,7 +4,11 @@ from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=str(Path(__file__).resolve().parent.parent / ".env"),
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
     model_base_url: str = "http://127.0.0.1:1234/v1"
     model_chat_model: str = "gpt-oss:20b"
@@ -30,6 +34,7 @@ class Settings(BaseSettings):
     chunk_overlap: int = 150
     embedding_batch_size: int = 16
     retrieval_top_k: int = 5
+    debug: bool = False
 
 
 settings = Settings()

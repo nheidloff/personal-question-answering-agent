@@ -62,6 +62,7 @@ body {
   from {
     transform: translateY(0) rotate(0deg);
   }
+
   to {
     transform: translateY(20px) rotate(12deg);
   }
@@ -71,6 +72,7 @@ body {
   from {
     transform: translateY(0) rotate(0deg);
   }
+
   to {
     transform: translateY(-18px) rotate(-8deg);
   }
@@ -130,6 +132,7 @@ body {
     transform: translateY(8px);
     opacity: 0;
   }
+
   to {
     transform: translateY(0);
     opacity: 1;
@@ -149,7 +152,7 @@ body {
   z-index: 1;
 }
 
-.single-layout .panel + .panel {
+.single-layout .panel+.panel {
   margin-top: 18px;
 }
 
@@ -496,4 +499,108 @@ textarea:focus {
   .files-table {
     min-width: 860px;
   }
+}
+
+/* Assistant Page Refactor Styles */
+.assistant-layout {
+  grid-template-columns: 1.4fr 0.6fr;
+}
+
+.current-interaction {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.history-panel {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 200px);
+}
+
+.history-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.history-list li {
+  margin-bottom: 8px;
+}
+
+.history-item {
+  width: 100%;
+  text-align: left;
+  background: rgba(255, 255, 255, 0.5);
+  border: 1px solid var(--line);
+  padding: 12px;
+  border-radius: 12px;
+  color: var(--ink);
+  font-weight: normal;
+  transition: all 140ms ease;
+  display: block;
+}
+
+.history-item:hover {
+  background: rgba(255, 255, 255, 0.9);
+  transform: translateX(4px);
+}
+
+.history-item.active {
+  background: var(--accent);
+  color: white;
+  border-color: transparent;
+  box-shadow: 0 4px 12px rgba(15, 118, 110, 0.2);
+}
+
+.history-q {
+  font-size: 0.9rem;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 1.3;
+}
+
+.empty-history {
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+  padding: 20px;
+  text-align: center;
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+}
+
+.next-action {
+  margin-top: 24px;
+  display: flex;
+  justify-content: center;
+}
+
+.next-button {
+  padding: 12px 24px;
+  font-size: 1rem;
+  background: var(--accent-strong);
+  box-shadow: 0 8px 16px rgba(17, 94, 89, 0.15);
+}
+
+.assistant-thinking {
+  margin: 20px 0;
+  padding: 16px;
+  background: rgba(240, 247, 255, 0.6);
+  border-radius: 12px;
+  border: 1px dashed var(--line);
+}
+
+.typing-indicator {
+  font-size: 0.9rem;
+  color: var(--ink-soft);
+  font-style: italic;
+}
+
+.display-mode .msg {
+  animation: fadeIn 300ms ease-out;
 }

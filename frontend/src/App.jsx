@@ -108,7 +108,8 @@ function App() {
 
   const [question, setQuestion] = useState('')
   const [isChatting, setIsChatting] = useState(false)
-  const [messages, setMessages] = useState([])
+  const [history, setHistory] = useState([])
+  const [currentPair, setCurrentPair] = useState(null)
   const [indexOverview, setIndexOverview] = useState(null)
   const [isLoadingOverview, setIsLoadingOverview] = useState(false)
   const [indexOverviewError, setIndexOverviewError] = useState('')
@@ -267,9 +268,12 @@ function App() {
     const trimmed = question.trim()
     if (!trimmed || isChatting) return
 
-    setMessages((prev) => [...prev, { role: 'user', content: trimmed }])
-    setQuestion('')
     setIsChatting(true)
+    const newUserMsg = { role: 'user', content: trimmed }
+
+    // We temporarily show the user's question while thinking
+    setCurrentPair({ question: trimmed, answer: null, sources: [] })
+    setQuestion('')
 
     try {
       const response = await fetch(`${API_BASE_URL}/api/chat`, {
@@ -286,26 +290,32 @@ function App() {
       }
 
       const payload = await response.json()
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: 'assistant',
-          content: payload.answer,
-          sources: payload.sources || [],
-        },
-      ])
+      const newPair = {
+        question: trimmed,
+        answer: payload.answer,
+        sources: payload.sources || [],
+      }
+      setCurrentPair(newPair)
+      setHistory((prev) => [newPair, ...prev])
     } catch (error) {
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: 'assistant',
-          content: `Error: ${error.message}`,
-          sources: [],
-        },
-      ])
+      const errorPair = {
+        question: trimmed,
+        answer: `Error: ${error.message}`,
+        sources: [],
+      }
+      setCurrentPair(errorPair)
     } finally {
       setIsChatting(false)
     }
+  }
+
+  const startNextQuestion = () => {
+    setCurrentPair(null)
+    setQuestion('')
+  }
+
+  const selectHistoryItem = (pair) => {
+    setCurrentPair(pair)
   }
 
   const recreateIndex = async () => {
@@ -394,23 +404,45 @@ function App() {
       </nav>
 
       {currentPage === 'home' ? (
-        <main className="single-layout">
+        <main className="grid-layout assistant-layout">
           <section className="panel chat-panel">
-            <h2>Ask Questions</h2>
+            <h2>Assistant</h2>
 
-            <div className="messages">
-              {messages.length === 0 ? (
-                <div className="empty-state">Ask a question about your indexed personal data.</div>
+            <div className="current-interaction">
+              {!currentPair ? (
+                <div className="input-mode">
+                  <div className="empty-state">Ask a question about your indexed personal data.</div>
+                  <form onSubmit={sendQuestion} className="chat-form">
+                    <textarea
+                      value={question}
+                      onChange={(event) => setQuestion(event.target.value)}
+                      placeholder="What is in my documents?"
+                      rows={3}
+                      disabled={isChatting}
+                    />
+                    <button type="submit" disabled={isChatting || !question.trim()}>
+                      {isChatting ? 'Thinking...' : 'Ask Question'}
+                    </button>
+                  </form>
+                </div>
               ) : (
-                messages.map((message, idx) => {
-                  const sourceFiles = uniqueSourceFiles(message.sources)
-                  return (
-                    <article key={idx} className={`msg msg-${message.role}`}>
-                      <div className="msg-role">{message.role === 'user' ? 'You' : 'Assistant'}</div>
-                      <div className="msg-content">{message.content}</div>
-                      {message.role === 'assistant' && sourceFiles.length > 0 && (
+                <div className="display-mode">
+                  <article className="msg msg-user">
+                    <div className="msg-role">You</div>
+                    <div className="msg-content">{currentPair.question}</div>
+                  </article>
+
+                  {isChatting ? (
+                    <div className="assistant-thinking">
+                      <div className="typing-indicator">Assistant is thinking...</div>
+                    </div>
+                  ) : currentPair.answer ? (
+                    <article className="msg msg-assistant">
+                      <div className="msg-role">Assistant</div>
+                      <div className="msg-content">{currentPair.answer}</div>
+                      {uniqueSourceFiles(currentPair.sources).length > 0 && (
                         <div className="source-list">
-                          {sourceFiles.map((path) => {
+                          {uniqueSourceFiles(currentPair.sources).map((path) => {
                             const relativeFilePath = toRelativeDataPath(path)
                             const dataUrl = `/data/${relativeFilePath}`
                             return (
@@ -424,24 +456,40 @@ function App() {
                         </div>
                       )}
                     </article>
-                  )
-                })
+                  ) : null}
+
+                  {!isChatting && (
+                    <div className="next-action">
+                      <button type="button" onClick={startNextQuestion} className="next-button">
+                        Ask next Question
+                      </button>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
-
-            <form onSubmit={sendQuestion} className="chat-form">
-              <textarea
-                value={question}
-                onChange={(event) => setQuestion(event.target.value)}
-                placeholder="What is in my documents and photos?"
-                rows={3}
-                disabled={isChatting}
-              />
-              <button type="submit" disabled={isChatting || !question.trim()}>
-                {isChatting ? 'Thinking...' : 'Send'}
-              </button>
-            </form>
           </section>
+
+          <aside className="panel history-panel">
+            <h2>Previous Questions</h2>
+            {history.length === 0 ? (
+              <div className="empty-history">No questions yet.</div>
+            ) : (
+              <ul className="history-list">
+                {history.map((pair, idx) => (
+                  <li key={idx}>
+                    <button
+                      type="button"
+                      className={`history-item ${currentPair === pair ? 'active' : ''}`}
+                      onClick={() => selectHistoryItem(pair)}
+                    >
+                      <span className="history-q">{pair.question}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </aside>
         </main>
       ) : (
         <main className="single-layout">
