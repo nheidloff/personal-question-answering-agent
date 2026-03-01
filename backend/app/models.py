@@ -53,6 +53,7 @@ class IndexOverviewResponse(BaseModel):
     opensearch_chunks_count: int | None = None
     opensearch_status: Literal["ok", "unavailable"] = "ok"
     opensearch_error: str | None = None
+    data_dir: str | None = None
 
 class FileMetadataItem(BaseModel):
     path: str

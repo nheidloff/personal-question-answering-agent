@@ -116,6 +116,7 @@ function App() {
   const [filesLastSynchronizedUtc, setFilesLastSynchronizedUtc] = useState(null)
   const [isLoadingFilesMetadata, setIsLoadingFilesMetadata] = useState(false)
   const [filesMetadataError, setFilesMetadataError] = useState('')
+  const [dataDir, setDataDir] = useState('')
 
   const isIndexing = useMemo(() => {
     return jobStatus && (jobStatus.status === 'queued' || jobStatus.status === 'running')
@@ -135,6 +136,9 @@ function App() {
       }
       const payload = await response.json()
       setIndexOverview(payload)
+      if (payload.data_dir) {
+        setDataDir(payload.data_dir)
+      }
     } catch (error) {
       setIndexOverviewError(error.message)
     } finally {
@@ -406,11 +410,17 @@ function App() {
                       <div className="msg-content">{message.content}</div>
                       {message.role === 'assistant' && sourceFiles.length > 0 && (
                         <div className="source-list">
-                          {sourceFiles.map((path) => (
-                            <div key={path} className="source-item">
-                              <div className="source-path">{path}</div>
-                            </div>
-                          ))}
+                          {sourceFiles.map((path) => {
+                            const relativeFilePath = toRelativeDataPath(path)
+                            const dataUrl = `/data/${relativeFilePath}`
+                            return (
+                              <div key={path} className="source-item">
+                                <a href={dataUrl} className="source-path source-link" title={path} target="_blank" rel="noopener noreferrer">
+                                  {path}
+                                </a>
+                              </div>
+                            )
+                          })}
                         </div>
                       )}
                     </article>
@@ -533,7 +543,7 @@ function App() {
               This page lists all files currently in the data directory and sub-directories. Metadata columns are read from <code>index-files.md</code>.
             </p>
 
-            
+
             {filesMetadataError && <div className="status-error">{filesMetadataError}</div>}
 
             <div className="files-table-wrap">
@@ -567,7 +577,12 @@ function App() {
                       return (
                         <tr key={file.path}>
                           <td className="path-cell">
-                            <div className="mono tree-line">{`${treePrefix}${fileName}`}</div>
+                            <div className="mono tree-line">
+                              {`${treePrefix}`}
+                              <a href={`/data/${toRelativeDataPath(file.path)}`} className="file-link" target="_blank" rel="noopener noreferrer">
+                                {fileName}
+                              </a>
+                            </div>
                             <div className="tree-parent">{parentPath ? `data/${parentPath}/` : 'data/'}</div>
                           </td>
                           <td>

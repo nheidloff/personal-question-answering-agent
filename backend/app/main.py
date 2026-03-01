@@ -5,6 +5,7 @@ from pathlib import Path
 import string
 from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from .config import settings
 from .ingestion import list_data_files, run_indexing
 from .jobs import JobManager
@@ -35,6 +36,7 @@ app.add_middleware(
 jobs = JobManager()
 model = ModelClient(settings)
 vector_store = OpenSearchVectorStore(settings)
+app.mount("/data", StaticFiles(directory=settings.data_dir), name="data")
 
 
 @dataclass
@@ -246,6 +248,7 @@ def get_index_overview() -> IndexOverviewResponse:
         opensearch_chunks_count=opensearch_chunks_count,
         opensearch_status=opensearch_status,
         opensearch_error=opensearch_error,
+        data_dir=str(data_dir.absolute()),
     )
 
 
