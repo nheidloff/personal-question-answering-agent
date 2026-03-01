@@ -1,4 +1,5 @@
 data
+data-text
 node_modules
 .venv
 .DS_Store

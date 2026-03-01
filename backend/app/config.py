@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     )
 
     data_dir: str = Field(default_factory=lambda: str(Path(__file__).resolve().parents[2] / "data"))
+    data_text_dir: str = Field(
+        default_factory=lambda: str(Path(__file__).resolve().parents[2] / "data-text")
+    )
 
     chunk_size: int = 1000
     chunk_overlap: int = 150

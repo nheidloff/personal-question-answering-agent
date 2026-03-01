@@ -6,15 +6,26 @@ import hashlib
 from pathlib import Path
 from typing import Callable
 import string
-import easyocr
 from docling.datamodel.base_models import InputFormat
 from docling.datamodel.pipeline_options import EasyOcrOptions, PdfPipelineOptions
-from docling.document_converter import DocumentConverter, PdfFormatOption
+from docling.document_converter import (
+    DocumentConverter,
+    PdfFormatOption,
+    WordFormatOption,
+    PowerpointFormatOption,
+    ImageFormatOption,
+    HTMLFormatOption,
+)
+from docling.backend.pypdfium2_backend import PyPdfiumDocumentBackend
+from docling.pipeline.simple_pipeline import SimplePipeline
+from docling.pipeline.standard_pdf_pipeline import StandardPdfPipeline
 from .config import Settings
 from .model_client import ModelClient
 from .opensearch_client import OpenSearchVectorStore
 
-ProgressCallback = Callable[[float, str], None]
+from typing import Any, Callable
+
+ProgressCallback = Callable[[float, str, dict[str, Any] | None], None]
 
 IGNORED_FILENAMES = {".DS_Store"}
 
@@ -52,45 +63,89 @@ class FailedFileState:
 
 
 @lru_cache(maxsize=1)
-def _get_pdf_converter() -> DocumentConverter:
-    pipeline_options = PdfPipelineOptions()
-    pipeline_options.do_ocr = True
-    pipeline_options.ocr_options = EasyOcrOptions()
-    pipeline_options.ocr_options.use_gpu = False
-
+def _get_document_converter() -> DocumentConverter:
     return DocumentConverter(
+        allowed_formats=[
+            InputFormat.PDF,
+            InputFormat.IMAGE,
+            InputFormat.DOCX,
+            InputFormat.HTML,
+            InputFormat.PPTX,
+            InputFormat.ASCIIDOC,
+            InputFormat.CSV,
+            InputFormat.MD,
+        ],
         format_options={
-            InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options),
-        }
+            InputFormat.PDF: PdfFormatOption(
+                pipeline_cls=StandardPdfPipeline, backend=PyPdfiumDocumentBackend
+            ),
+            InputFormat.DOCX: WordFormatOption(
+                pipeline_cls=SimplePipeline
+            ),
+            InputFormat.IMAGE: ImageFormatOption(
+                pipeline_options=PdfPipelineOptions(
+                    do_ocr=True,
+                    ocr_options=EasyOcrOptions(use_gpu=False),
+                )
+            ),
+        },
     )
 
 
-@lru_cache(maxsize=1)
-def _get_easyocr_reader() -> easyocr.Reader:
-    return easyocr.Reader(["en"], gpu=False)
+def _read_with_docling(file_path: Path, settings: Settings | None = None) -> str:
+    conversion = _get_document_converter().convert(file_path)
+    markdown_content = conversion.document.export_to_markdown()
+
+    if settings:
+        try:
+            # We want to save representations in data-text/markdown and data-text/doctags
+            data_text_dir = Path(settings.data_text_dir)
+            
+            # Use relative path from data_dir to preserve structure
+            rel_path = file_path.relative_to(settings.data_dir)
+            
+            markdown_dir = data_text_dir / "markdown"
+            doctags_dir = data_text_dir / "doctags"
+            
+            markdown_file = (markdown_dir / rel_path).with_suffix(".md")
+            doctags_file = (doctags_dir / rel_path).with_suffix(".doctags")
+            
+            markdown_file.parent.mkdir(parents=True, exist_ok=True)
+            doctags_file.parent.mkdir(parents=True, exist_ok=True)
+            
+            with markdown_file.open("w", encoding="utf-8") as fp:
+                fp.write(markdown_content)
+            
+            with doctags_file.open("w", encoding="utf-8") as fp:
+                fp.write(conversion.document.export_to_doctags())
+        except Exception:
+            # If saving fails, we still want the extraction to count
+            pass
+
+    return markdown_content
 
 
-def _read_pdf(file_path: Path) -> str:
-    conversion = _get_pdf_converter().convert(file_path)
-    return conversion.document.export_to_markdown()
-
-
-def _read_image(file_path: Path) -> str:
-    segments = _get_easyocr_reader().readtext(str(file_path), detail=0, paragraph=True)
-    return "\n".join(segment.strip() for segment in segments if segment and segment.strip())
+SUPPORTED_DOCLING_EXTENSIONS = {
+    ".pdf", ".docx", ".pptx", ".html", ".htm", ".asciidoc", ".adoc",
+    ".csv", ".xlsx", ".xls", ".xml", ".xhtml", ".latex", ".tex",
+    ".png", ".jpg", ".jpeg", ".tiff", ".bmp"
+}
 
 
 def extract_text_from_file(file_path: Path) -> str:
     suffix = file_path.suffix.lower()
 
-    if suffix in {".txt", ".md"}:
+    if suffix == ".txt":
         return file_path.read_text(encoding="utf-8")
 
-    if suffix == ".pdf":
-        return _read_pdf(file_path)
-
-    if suffix in {".jpeg", ".jpg", ".png"}:
-        return _read_image(file_path)
+    if suffix in SUPPORTED_DOCLING_EXTENSIONS or suffix == ".md":
+        try:
+            return _read_with_docling(file_path, settings=Settings())
+        except Exception:
+            # Fallback for markdown only
+            if suffix == ".md":
+                return file_path.read_text(encoding="utf-8")
+            raise
 
     # Attempt any other file type as UTF-8 text.
     return file_path.read_text(encoding="utf-8")
@@ -208,9 +263,6 @@ def _load_index_state(index_state_file: Path) -> tuple[dict[str, IndexedFileStat
             section = "failed"
             continue
 
-        if section != "indexed":
-            continue
-
         if not row.startswith("|"):
             continue
 
@@ -219,10 +271,13 @@ def _load_index_state(index_state_file: Path) -> tuple[dict[str, IndexedFileStat
             continue
 
         path = columns[0]
-        if not path:
+        if not path or path == "_None_":
             continue
 
         indexed_paths.add(path)
+
+        if section != "indexed":
+            continue
 
         if len(columns) != 4:
             continue
@@ -304,7 +359,7 @@ def build_file_fingerprints(
     total = len(files)
 
     for idx, file_path in enumerate(files, start=1):
-        on_progress(2 + (idx / max(total, 1)) * 18, f"Scanning {file_path.name}")
+        on_progress(2 + (idx / max(total, 1)) * 18, f"Scanning {file_path.name}", None)
         rel_path = _relative_file_path(file_path, data_dir)
         discovered_paths.add(rel_path)
         try:
@@ -318,7 +373,7 @@ def build_file_fingerprints(
                 )
             )
         except Exception as exc:  # noqa: BLE001
-            on_progress(2 + (idx / max(total, 1)) * 18, f"Skipping {file_path.name}: {exc}")
+            on_progress(2 + (idx / max(total, 1)) * 18, f"Skipping {file_path.name}: {exc}", None)
             failed.append(
                 FailedFileState(
                     path=rel_path,
@@ -345,14 +400,15 @@ def build_chunks_for_files(
     successful_paths: set[str] = set()
     failed: list[FailedFileState] = []
     total = len(files)
-
     for idx, file in enumerate(files, start=1):
         progress = progress_start + (idx / max(total, 1)) * progress_span
-        on_progress(progress, f"Extracting {file.file_path.name}")
+        on_progress(progress, f"Extracting {file.file_path.name}", None)
         try:
             text = extract_text_from_file(file.file_path)
+            successful_paths.add(file.path)
+            on_progress(progress, f"Extracted {file.file_path.name}", {"indexed_paths": sorted(list(successful_paths))})
         except Exception as exc:  # noqa: BLE001
-            on_progress(progress, f"Skipping {file.file_path.name}: {exc}")
+            on_progress(progress, f"Skipping {file.file_path.name}: {exc}", None)
             failed.append(
                 FailedFileState(
                     path=file.path,
@@ -362,7 +418,7 @@ def build_chunks_for_files(
                 )
             )
             continue
-        successful_paths.add(file.path)
+
         chunks = chunk_text(text, settings.chunk_size, settings.chunk_overlap)
 
         for chunk_idx, chunk in enumerate(chunks, start=1):
@@ -423,7 +479,12 @@ def _index_chunks(
         store.bulk_index(first_docs)
 
     indexed_count = len(first_docs)
-    on_progress(50 + (indexed_count / max(total, 1)) * 50, f"Indexed {indexed_count}/{total} chunks")
+    successfully_indexed_paths = {doc["path"] for doc in first_docs}
+    on_progress(
+        50 + (indexed_count / max(total, 1)) * 50,
+        f"Indexed {indexed_count}/{total} chunks",
+        {"indexed_paths": sorted(list(successfully_indexed_paths))}
+    )
 
     for start in range(first_batch_size, total, settings.embedding_batch_size):
         end = min(start + settings.embedding_batch_size, total)
@@ -433,8 +494,14 @@ def _index_chunks(
         if docs:
             store.bulk_index(docs)
             indexed_count += len(docs)
+            for doc in docs:
+                successfully_indexed_paths.add(doc["path"])
         percent = 50 + (indexed_count / max(total, 1)) * 50
-        on_progress(percent, f"Indexed {indexed_count}/{total} chunks")
+        on_progress(
+            percent,
+            f"Indexed {indexed_count}/{total} chunks",
+            {"indexed_paths": sorted(list(successfully_indexed_paths))}
+        )
 
     return indexed_count
 
@@ -452,7 +519,7 @@ def run_indexing(
     index_state_file = Path(settings.index_state_file)
     previous_state, previous_indexed_paths = _load_index_state(index_state_file)
 
-    on_progress(2, "Scanning files")
+    on_progress(2, "Scanning files", None)
     fingerprints, discovered_paths, failed_entries = build_file_fingerprints(data_dir, on_progress)
     current_paths = set(discovered_paths)
     previous_paths = set(previous_indexed_paths)
@@ -471,7 +538,7 @@ def run_indexing(
     if not files_to_index and not deleted_paths:
         synchronized_at = datetime.now(timezone.utc)
         _write_index_state(index_state_file, list(previous_state.values()), failed_entries, synchronized_at)
-        on_progress(100, "No new or changed files to index")
+        on_progress(100, "No new or changed files to index", None)
         return {
             "files_processed": len(discovered_paths),
             "files_indexed": 0,
@@ -482,8 +549,28 @@ def run_indexing(
         }
 
     if deleted_paths:
-        on_progress(25, f"Removing {len(deleted_paths)} deleted file(s) from index")
+        on_progress(25, f"Removing {len(deleted_paths)} deleted file(s) from index", None)
         store.delete_by_paths(deleted_paths)
+        
+        # Also delete corresponding text files
+        data_text_dir = Path(settings.data_text_dir)
+        data_dir_name = Path(settings.data_dir).name
+        for path_str in deleted_paths:
+            path = Path(path_str)
+            if path.parts[0] == data_dir_name:
+                # Get the relative path inside data/
+                rel_path = Path(*path.parts[1:])
+                
+                markdown_file = (data_text_dir / "markdown" / rel_path).with_suffix(".md")
+                doctags_file = (data_text_dir / "doctags" / rel_path).with_suffix(".doctags")
+                
+                try:
+                    if markdown_file.exists():
+                        markdown_file.unlink()
+                    if doctags_file.exists():
+                        doctags_file.unlink()
+                except Exception:
+                    pass
 
     chunks, successful_paths, extraction_failures = build_chunks_for_files(
         files_to_index,
@@ -497,15 +584,15 @@ def run_indexing(
 
     reindex_paths = sorted(successful_paths)
     if reindex_paths:
-        on_progress(52, f"Removing outdated chunks for {len(reindex_paths)} updated file(s)")
+        on_progress(52, f"Removing outdated chunks for {len(reindex_paths)} updated file(s)", None)
         store.delete_by_paths(reindex_paths)
 
     indexed_count = 0
     if chunks:
-        on_progress(55, "Generating embeddings and indexing")
+        on_progress(55, "Generating embeddings and indexing", None)
         indexed_count = _index_chunks(chunks, settings, model_client, store, on_progress)
     else:
-        on_progress(90, "No new chunk content to index")
+        on_progress(90, "No new chunk content to index", None)
 
     synchronized_at = datetime.now(timezone.utc)
     next_state: dict[str, IndexedFileState] = {}
@@ -534,7 +621,7 @@ def run_indexing(
             next_state[file.path] = previous
 
     _write_index_state(index_state_file, list(next_state.values()), failed_entries, synchronized_at)
-    on_progress(100, f"Completed indexing {indexed_count} chunks")
+    on_progress(100, f"Completed indexing {indexed_count} chunks", {"indexed_paths": sorted(list(successful_paths))})
 
     return {
         "files_processed": len(discovered_paths),

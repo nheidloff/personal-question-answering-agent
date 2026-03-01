@@ -123,9 +123,23 @@ function App() {
     return jobStatus && (jobStatus.status === 'queued' || jobStatus.status === 'running')
   }, [jobStatus])
 
+  const mergedFilesMetadata = useMemo(() => {
+    if (!jobStatus || !jobStatus.indexed_paths || jobStatus.indexed_paths.length === 0) {
+      return filesMetadata
+    }
+
+    const indexedSet = new Set(jobStatus.indexed_paths)
+    return filesMetadata.map((file) => {
+      if (indexedSet.has(file.path) && file.status !== 'indexed') {
+        return { ...file, status: 'indexed' }
+      }
+      return file
+    })
+  }, [filesMetadata, jobStatus])
+
   const sortedFilesMetadata = useMemo(() => {
-    return sortFilesMetadataByDirectory(filesMetadata)
-  }, [filesMetadata])
+    return sortFilesMetadataByDirectory(mergedFilesMetadata)
+  }, [mergedFilesMetadata])
 
   const loadIndexOverview = async () => {
     try {

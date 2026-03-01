@@ -2,7 +2,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+import shutil
 import string
+from typing import Any
 from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -176,8 +178,11 @@ def _load_index_state_snapshot(index_state_file: Path) -> tuple[set[str], int, d
 
 
 def _run_index_job(job_id: str) -> None:
-    def on_progress(progress: float, message: str) -> None:
-        jobs.update(job_id, status="running", progress=min(progress, 100), message=message)
+    def on_progress(progress: float, message: str, extra: dict[str, Any] | None) -> None:
+        fields = {"status": "running", "progress": min(progress, 100), "message": message}
+        if extra:
+            fields.update(extra)
+        jobs.update(job_id, **fields)
 
     jobs.update(job_id, status="running", progress=1, message="Starting indexing")
     try:
@@ -321,6 +326,11 @@ def recreate_index() -> RecreateIndexResponse:
         documents_removed = vector_store.remove_all_documents()
         index_deleted = vector_store.delete_index()
         vector_store.ensure_index(vector_dimension, recreate=False)
+
+        data_text_dir = Path(settings.data_text_dir)
+        if data_text_dir.exists() and data_text_dir.is_dir():
+            shutil.rmtree(data_text_dir)
+            data_text_dir.mkdir(parents=True, exist_ok=True)
 
         return RecreateIndexResponse(
             status="completed",

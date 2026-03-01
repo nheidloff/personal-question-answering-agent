@@ -18,6 +18,7 @@ class IndexJobStatus(BaseModel):
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     result: dict[str, Any] | None = None
     error: str | None = None
+    indexed_paths: list[str] = []
 
 class ChatRequest(BaseModel):
     question: str
