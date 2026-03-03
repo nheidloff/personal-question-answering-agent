@@ -1,11 +1,28 @@
 from __future__ import annotations
+import sys
+import os
 from pathlib import Path
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+def get_base_dir() -> Path:
+    if getattr(sys, "frozen", False):
+        # Running as a packaged executable
+        return Path(sys.executable).parent
+    # Running in development
+    return Path(__file__).resolve().parents[2]
+
+def get_data_base_dir() -> Path:
+    # Use ~/Documents/PersonalQA as default data directory for packaged app
+    if getattr(sys, "frozen", False):
+        path = Path.home() / "Documents" / "PersonalQA"
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+    return Path(__file__).resolve().parents[2]
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=str(Path(__file__).resolve().parent.parent / ".env"),
+        env_file=str(get_base_dir() / ".env"),
         env_file_encoding="utf-8",
         extra="ignore",
     )
@@ -21,16 +38,17 @@ class Settings(BaseSettings):
     opensearch_use_ssl: bool = False
     opensearch_verify_certs: bool = False
     opensearch_index_name: str = "personal_rag"
+    
     index_state_file: str = Field(
-        default_factory=lambda: str(Path(__file__).resolve().parents[2] / "index-files.md")
+        default_factory=lambda: str(get_data_base_dir() / "index-files.md")
     )
     index_state_template_file: str = Field(
-        default_factory=lambda: str(Path(__file__).resolve().parents[2] / "index-files-template.md")
+        default_factory=lambda: str(get_base_dir() / "index-files-template.md")
     )
 
-    data_dir: str = Field(default_factory=lambda: str(Path(__file__).resolve().parents[2] / "data"))
+    data_dir: str = Field(default_factory=lambda: str(get_data_base_dir() / "data"))
     data_text_dir: str = Field(
-        default_factory=lambda: str(Path(__file__).resolve().parents[2] / "data-text")
+        default_factory=lambda: str(get_data_base_dir() / "data-text")
     )
 
     chunk_size: int = 1000
@@ -41,3 +59,4 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+

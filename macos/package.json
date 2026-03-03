@@ -1,0 +1,50 @@
+{
+    "name": "personal-rag-macos",
+    "version": "1.0.0",
+    "main": "main.js",
+    "type": "module",
+    "scripts": {
+        "dev": "vite",
+        "build": "vite build",
+        "preview": "vite preview",
+        "electron": "electron .",
+        "electron:dev": "concurrently \"npm run dev\" \"wait-on http://localhost:5173 && electron .\""
+    },
+    "dependencies": {
+        "react": "^18.3.1",
+        "react-dom": "^18.3.1"
+    },
+    "devDependencies": {
+        "@vitejs/plugin-react": "^4.4.1",
+        "concurrently": "^8.2.2",
+        "electron": "^30.0.1",
+        "electron-builder": "^24.13.3",
+        "vite": "^5.4.19",
+        "wait-on": "^7.2.0"
+    },
+    "build": {
+        "appId": "com.nheidloff.personal-rag",
+        "productName": "Personal QA Assistant",
+        "directories": {
+            "output": "dist-electron"
+        },
+        "files": [
+            "dist/**/*",
+            "main.js",
+            "preload.js"
+        ],
+        "extraResources": [
+            {
+                "from": "../backend/dist/run_app",
+                "to": "backend/run_app",
+                "filter": [
+                    "**/*"
+                ]
+            }
+        ],
+        "mac": {
+            "target": "dmg",
+            "category": "public.app-category.productivity"
+        }
+    }
+}

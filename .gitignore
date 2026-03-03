@@ -8,3 +8,7 @@ __pycache__
 index-files.md
 frontend/dist
 readnik.md
+dist-electron
+backend/build
+backend/dist
+macos/dist
