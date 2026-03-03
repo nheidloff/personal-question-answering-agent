@@ -1,0 +1,117 @@
+#!/usr/bin/env python3
+
+import argparse
+import urllib.request
+import urllib.error
+import urllib.parse
+import json
+import os
+import sys
+
+# Default backend URL
+BACKEND_URL = os.environ.get("PRAG_BACKEND_URL", "http://127.0.0.1:8000")
+
+def print_error(msg):
+    print(f"Error: {msg}", file=sys.stderr)
+    sys.exit(1)
+
+def print_json(data):
+    print(json.dumps(data, indent=2))
+
+def make_request(method, endpoint, payload=None):
+    url = f"{BACKEND_URL}{endpoint}"
+    headers = {"Content-Type": "application/json"}
+    
+    data = None
+    if payload:
+        data = json.dumps(payload).encode("utf-8")
+        
+    req = urllib.request.Request(url, data=data, headers=headers, method=method)
+    
+    try:
+        with urllib.request.urlopen(req) as response:
+            body = response.read().decode("utf-8")
+            if body:
+                return json.loads(body)
+            return None
+    except urllib.error.HTTPError as e:
+        error_body = e.read().decode("utf-8")
+        try:
+            error_json = json.loads(error_body)
+            print_error(f"HTTP {e.code}: {error_json.get('detail', error_body)}")
+        except json.JSONDecodeError:
+            print_error(f"HTTP {e.code}: {e.reason}\n{error_body}")
+    except urllib.error.URLError as e:
+        print_error(f"Failed to connect to backend at {BACKEND_URL}: {e.reason}")
+
+def cmd_health(args):
+    result = make_request("GET", "/api/health")
+    print_json(result)
+
+def cmd_index_start(args):
+    result = make_request("POST", "/api/index/start")
+    print_json(result)
+
+def cmd_index_status(args):
+    result = make_request("GET", f"/api/index/status/{args.job_id}")
+    print_json(result)
+
+def cmd_index_overview(args):
+    result = make_request("GET", "/api/index/overview")
+    print_json(result)
+
+def cmd_index_files(args):
+    result = make_request("GET", "/api/index/files")
+    print_json(result)
+
+def cmd_index_recreate(args):
+    result = make_request("POST", "/api/index/recreate")
+    print_json(result)
+
+def cmd_chat(args):
+    result = make_request("POST", "/api/chat", payload={"question": args.question})
+    print_json(result)
+
+def main():
+    parser = argparse.ArgumentParser(description="Prag CLI - Personal QA Assistant")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    # Health command
+    parser_health = subparsers.add_parser("health", help="Check backend health")
+    parser_health.set_defaults(func=cmd_health)
+
+    # Index command group
+    parser_index = subparsers.add_parser("index", help="Index management commands")
+    index_subparsers = parser_index.add_subparsers(dest="index_command", required=True)
+
+    # index start
+    index_start = index_subparsers.add_parser("start", help="Start indexing data directory")
+    index_start.set_defaults(func=cmd_index_start)
+
+    # index status
+    index_status = index_subparsers.add_parser("status", help="Get status of an index job")
+    index_status.add_argument("job_id", help="The job ID to check")
+    index_status.set_defaults(func=cmd_index_status)
+
+    # index overview
+    index_overview = index_subparsers.add_parser("overview", help="Get overview of indexed data")
+    index_overview.set_defaults(func=cmd_index_overview)
+
+    # index files
+    index_files = index_subparsers.add_parser("files", help="List all files and their index status")
+    index_files.set_defaults(func=cmd_index_files)
+
+    # index recreate
+    index_recreate = index_subparsers.add_parser("recreate", help="Recreate the index from scratch")
+    index_recreate.set_defaults(func=cmd_index_recreate)
+
+    # Chat command
+    parser_chat = subparsers.add_parser("chat", help="Ask a question")
+    parser_chat.add_argument("question", help="The question to ask")
+    parser_chat.set_defaults(func=cmd_chat)
+
+    args = parser.parse_args()
+    args.func(args)
+
+if __name__ == "__main__":
+    main()
